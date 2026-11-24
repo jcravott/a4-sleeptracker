@@ -1,20 +1,200 @@
-<ion-header [translucent]="true">
+<ion-header class="ion-no-border">
   <ion-toolbar>
-    <ion-title>
-      Blank
-    </ion-title>
+    <div class="brand" aria-label="sleepplz">sleep<span>plz</span></div>
   </ion-toolbar>
 </ion-header>
 
-<ion-content [fullscreen]="true">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">Blank</ion-title>
-    </ion-toolbar>
-  </ion-header>
+<ion-content>
+  <main [class.compact-page]="section === 'sleepiness'">
+    <div class="storage-warning" *ngIf="sleepService.storageError" role="alert">
+      {{ sleepService.storageError }}
+      <ion-button size="small" (click)="sleepService.reload()">Retry storage</ion-button>
+    </div>
 
-  <div id="container">
-    <strong>Ready to create an app?</strong>
-    <p>Start with Ionic <a target="_blank" rel="noopener noreferrer" href="https://ionicframework.com/docs/components">UI Components</a></p>
-  </div>
+    <ng-container *ngIf="section === 'sleep'">
+      <h1>Sleep</h1>
+      <section class="stats" aria-label="Sleep statistics">
+        <div class="stat">
+          <span>Latest sleep</span>
+          <strong>{{ latest ? durationLabel(latest.durationMinutes) : '—' }}</strong>
+          <small *ngIf="latest">{{ latest.sleepEnd | date:'MMM d' }}</small>
+          <small *ngIf="!latest">No records yet</small>
+        </div>
+        <div class="stat">
+          <span>Average sleep</span>
+          <strong>{{ nights.length ? durationLabel(average) : '—' }}</strong>
+        </div>
+        <div class="stat">
+          <span>Nights logged</span>
+          <strong>{{ nights.length }}</strong>
+        </div>
+      </section>
+
+      <div class="sleep-layout">
+        <section class="panel sleep-form" aria-labelledby="sleep-form-title">
+          <div class="section-heading">
+            <h2 id="sleep-form-title">{{ editingId ? 'Edit sleep' : 'Log sleep' }}</h2>
+          </div>
+          <div class="edit-notice" *ngIf="editingId">
+            Editing saved entry
+            <button type="button" (click)="cancelEdit()">Cancel edit</button>
+          </div>
+          <form (ngSubmit)="save()">
+            <div class="date-fields">
+              <div class="date-field">
+                <span class="field-label">Bedtime</span>
+                <ion-datetime-button datetime="bedtime"></ion-datetime-button>
+                <ion-modal [keepContentsMounted]="true">
+                  <ng-template>
+                    <ion-datetime id="bedtime" aria-label="Bedtime" presentation="date-time" [max]="maxDate" [(ngModel)]="bedtime" name="bedtime" [showDefaultButtons]="true"></ion-datetime>
+                  </ng-template>
+                </ion-modal>
+              </div>
+              <div class="date-field">
+                <span class="field-label">Wake-up</span>
+                <ion-datetime-button datetime="wake"></ion-datetime-button>
+                <ion-modal [keepContentsMounted]="true">
+                  <ng-template>
+                    <ion-datetime id="wake" aria-label="Wake-up time" presentation="date-time" [max]="maxDate" [(ngModel)]="wakeTime" name="wake" [showDefaultButtons]="true"></ion-datetime>
+                  </ng-template>
+                </ion-modal>
+              </div>
+            </div>
+            <div class="duration-preview" aria-live="polite">
+              <span>Total sleep</span>
+              <strong>{{ previewError ? 'Check dates' : durationLabel(duration) }}</strong>
+            </div>
+            <p class="hint" *ngIf="previewError">{{ previewError }}</p>
+            <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+            <ion-button expand="block" type="submit" [disabled]="!!sleepService.storageError">
+              <ion-icon slot="start" name="add-outline"></ion-icon>
+              {{ editingId ? 'Save changes' : 'Save sleep' }}
+            </ion-button>
+          </form>
+        </section>
+
+        <section class="panel recent-sleep" aria-labelledby="recent-sleep-title">
+          <div class="section-heading">
+            <h2 id="recent-sleep-title">Recent sleep</h2>
+            <button class="text-link" (click)="navigate('history')">View history</button>
+          </div>
+          <p class="hint" *ngIf="recent.length">Last {{ recent.length }} {{ recent.length === 1 ? 'entry' : 'entries' }} · hours of sleep</p>
+          <div class="chart" *ngIf="recent.length; else noChart" aria-label="Recent sleep durations">
+            <div class="chart-column" *ngFor="let night of recent">
+              <span class="chart-value">{{ durationLabel(night.durationMinutes) }}</span>
+              <div class="bar-track"><div class="bar" [style.height.%]="barHeight(night)"></div></div>
+              <span>{{ night.sleepEnd | date:'MMM d' }}</span>
+            </div>
+          </div>
+          <ng-template #noChart><p class="empty-chart">No sleep records yet.</p></ng-template>
+        </section>
+      </div>
+      <button class="checkin-link" (click)="navigate('sleepiness')">
+        <span><ion-icon name="sunny-outline"></ion-icon>Log sleepiness</span>
+        <ion-icon name="arrow-forward-outline"></ion-icon>
+      </button>
+    </ng-container>
+
+    <ng-container *ngIf="section === 'sleepiness'">
+      <h1>{{ editingId ? 'Edit sleepiness' : 'Log sleepiness' }}</h1>
+      <section class="panel sleepiness-panel">
+        <div class="edit-notice" *ngIf="editingId">
+          Editing saved entry
+          <button type="button" (click)="cancelEdit()">Cancel edit</button>
+        </div>
+        <form (ngSubmit)="save()">
+          <div class="section-heading scale-heading"><h2>Stanford Sleepiness Scale</h2></div>
+          <p class="hint scale-help">Select one rating: 1 = most alert, 7 = most sleepy.</p>
+          <div class="scale" role="group" aria-label="Stanford Sleepiness Scale">
+            <button type="button" *ngFor="let description of scale; let i = index" class="scale-option" [class.selected]="rating === i + 1" [attr.aria-pressed]="rating === i + 1" (click)="rating = i + 1; error = ''">
+              <span class="scale-number">{{ i + 1 }}</span>
+              <span class="scale-copy"><strong>{{ scaleLabels[i] }}</strong><small>{{ description }}</small></span>
+              <span class="selection-dot" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="date-field check-date">
+            <span class="field-label">Date & time</span>
+            <ion-datetime-button datetime="checkin"></ion-datetime-button>
+            <ion-modal [keepContentsMounted]="true">
+              <ng-template>
+                <ion-datetime id="checkin" aria-label="Check-in time" presentation="date-time" [max]="maxDate" [(ngModel)]="checkTime" name="checkTime" [showDefaultButtons]="true"></ion-datetime>
+              </ng-template>
+            </ion-modal>
+          </div>
+          <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+          <ion-button expand="block" type="submit" [disabled]="!!sleepService.storageError">
+            <ion-icon slot="start" name="add-outline"></ion-icon>
+            {{ editingId ? 'Save changes' : 'Save sleepiness' }}
+          </ion-button>
+        </form>
+      </section>
+      <p class="footnote">You can log multiple ratings per day.</p>
+    </ng-container>
+
+    <ng-container *ngIf="section === 'history'">
+      <div class="history-heading">
+        <h1>Sleep history</h1>
+        <button id="history-settings-trigger" class="settings-button" type="button" aria-label="History settings" aria-haspopup="dialog">
+          <ion-icon name="settings-outline" aria-hidden="true"></ion-icon>
+        </button>
+      </div>
+      <ion-modal #settingsDialog class="history-settings-dialog" trigger="history-settings-trigger" [animated]="false" [backdropDismiss]="true" aria-labelledby="settings-title">
+        <ng-template>
+          <div class="settings-dialog-content">
+            <h2 id="settings-title">Settings</h2>
+            <label class="delete-setting">
+              <span>Ask before deleting</span>
+              <input type="checkbox" [checked]="sleepService.askBeforeDeleting" (change)="updateDeleteConfirmation($event)">
+            </label>
+            <div class="settings-dialog-actions">
+              <ion-button fill="clear" (click)="settingsDialog.dismiss()">Close</ion-button>
+            </div>
+          </div>
+        </ng-template>
+      </ion-modal>
+      <div class="filters" role="group" aria-label="Filter history">
+        <button [class.active]="filter === 'all'" [attr.aria-pressed]="filter === 'all'" (click)="filter = 'all'">All entries</button>
+        <button [class.active]="filter === 'sleep'" [attr.aria-pressed]="filter === 'sleep'" (click)="filter = 'sleep'">Sleep</button>
+        <button [class.active]="filter === 'sleepiness'" [attr.aria-pressed]="filter === 'sleepiness'" (click)="filter = 'sleepiness'">Sleepiness</button>
+      </div>
+      <p class="error" *ngIf="error" role="alert">{{ error }}</p>
+      <div class="history-caption">{{ history.length }} {{ history.length === 1 ? 'entry' : 'entries' }}</div>
+      <div class="history-list">
+        <article class="panel history-card" *ngFor="let record of history">
+          <div class="record-top">
+            <span class="record-type" [class.daytime]="!isNight(record)">
+              <ion-icon [name]="isNight(record) ? 'moon-outline' : 'sunny-outline'"></ion-icon>
+              {{ isNight(record) ? 'Sleep' : 'Sleepiness' }}
+            </span>
+            <span>{{ recordDate(record) | date:'MMM d, y' }}</span>
+          </div>
+          <ng-container *ngIf="isNight(record); else daytimeRecord">
+            <h2>{{ durationLabel(record.durationMinutes) }}</h2>
+            <p>{{ record.sleepStart | date:'MMM d, h:mm a' }} → {{ record.sleepEnd | date:'MMM d, h:mm a' }}</p>
+          </ng-container>
+          <ng-template #daytimeRecord>
+            <h2>{{ record.summaryString().split(':')[0] }} <small>/ 7 · {{ record.loggedAt | date:'h:mm a' }}</small></h2>
+            <p>{{ record.summaryString().split(': ')[1] }}</p>
+          </ng-template>
+          <div class="record-actions">
+            <button (click)="edit(record)" aria-label="Edit entry"><ion-icon name="create-outline"></ion-icon>Edit</button>
+            <button (click)="remove(record)" aria-label="Delete entry"><ion-icon name="trash-outline"></ion-icon>Delete</button>
+          </div>
+        </article>
+      </div>
+      <section class="panel empty-state" *ngIf="!history.length">
+        <h2>No {{ filter === 'all' ? '' : filter + ' ' }}records yet</h2>
+        <ion-button (click)="navigate(filter === 'sleepiness' ? 'sleepiness' : 'sleep')">{{ filter === 'sleepiness' ? 'Log sleepiness' : 'Log sleep' }}</ion-button>
+      </section>
+      <p class="footnote">Stored in this browser. Clearing site data removes your records.</p>
+    </ng-container>
+  </main>
 </ion-content>
+
+<ion-footer class="ion-no-border">
+  <nav aria-label="Main navigation">
+    <button [class.active]="section === 'sleep'" [attr.aria-current]="section === 'sleep' ? 'page' : null" (click)="navigate('sleep')"><ion-icon name="moon-outline"></ion-icon><span>Sleep</span></button>
+    <button [class.active]="section === 'sleepiness'" [attr.aria-current]="section === 'sleepiness' ? 'page' : null" (click)="navigate('sleepiness')"><ion-icon name="sunny-outline"></ion-icon><span>Sleepiness</span></button>
+    <button [class.active]="section === 'history'" [attr.aria-current]="section === 'history' ? 'page' : null" (click)="navigate('history')"><ion-icon name="time-outline"></ion-icon><span>History</span></button>
+  </nav>
+</ion-footer>

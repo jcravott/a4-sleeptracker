@@ -1,12 +1,10 @@
-import { nanoid } from 'nanoid';
-
 export class SleepData {
 	id:string;
 	loggedAt:Date;
 
 	constructor() {
 		//Assign a random (unique) ID. This may be useful for comparison (e.g., are two logged entries the same).
-		this.id = nanoid();
+		this.id = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 		this.loggedAt = new Date();
 	}
 

@@ -1,50 +1,113 @@
 import { Injectable } from '@angular/core';
-import { SleepData } from '../data/sleep-data';
 import { OvernightSleepData } from '../data/overnight-sleep-data';
 import { StanfordSleepinessData } from '../data/stanford-sleepiness-data';
+import { overnightError, sleepinessError } from './sleep-validation';
 
-@Injectable({
-  providedIn: 'root'
-})
+export type SleepRecord = OvernightSleepData | StanfordSleepinessData;
+interface StoredRecord {
+  kind: 'sleep' | 'sleepiness';
+  id: string;
+  loggedAt: string;
+  start?: string;
+  end?: string;
+  rating?: number;
+}
+
+@Injectable({ providedIn: 'root' })
 export class SleepService {
-	private static LoadDefaultData:boolean = true;
-	public static AllSleepData:SleepData[] = [];
-	public static AllOvernightData:OvernightSleepData[] = [];
-	public static AllSleepinessData:StanfordSleepinessData[] = [];
+  static readonly storageKey = 'nightshift.records.v1';
+  static readonly deleteConfirmationKey = 'nightshift.askBeforeDeleting.v1';
+  records: SleepRecord[] = [];
+  storageError = '';
+  private confirmDeletions = true;
 
-	constructor() {
-		if(SleepService.LoadDefaultData) {
-			this.addDefaultData();
-		SleepService.LoadDefaultData = false;
-	}
-	}
+  constructor() {
+    this.reload();
+    try {
+      this.confirmDeletions = localStorage.getItem(SleepService.deleteConfirmationKey) !== 'false';
+    } catch {
+      this.confirmDeletions = true;
+    }
+  }
 
-	private addDefaultData() {
-		var goToBed = new Date();
-		goToBed.setDate(goToBed.getDate() - 1); //set to yesterday
-		goToBed.setHours(1, 3, 0); //1:03am
-		var wakeUp = new Date();
-		wakeUp.setTime(goToBed.getTime() + 8 * 60 * 60 * 1000); //Sleep for exactly eight hours, waking up at 9:03am
-		this.logOvernightData(new OvernightSleepData(goToBed, wakeUp)); // add that person was asleep 1am-9am yesterday
-		var sleepinessDate = new Date();
-		sleepinessDate.setDate(sleepinessDate.getDate() - 1); //set to yesterday
-		sleepinessDate.setHours(14, 38, 0); //2:38pm
-		this.logSleepinessData(new StanfordSleepinessData(4, sleepinessDate)); // add sleepiness at 2pm
-		goToBed = new Date();
-		goToBed.setDate(goToBed.getDate() - 1); //set to yesterday
-		goToBed.setHours(23, 11, 0); //11:11pm
-		wakeUp = new Date();
-		wakeUp.setTime(goToBed.getTime() + 9 * 60 * 60 * 1000); //Sleep for exactly nine hours
-		this.logOvernightData(new OvernightSleepData(goToBed, wakeUp));
-	}
+  get askBeforeDeleting(): boolean { return this.confirmDeletions; }
 
-	public logOvernightData(sleepData:OvernightSleepData) {
-		SleepService.AllSleepData.push(sleepData);
-		SleepService.AllOvernightData.push(sleepData);
-	}
+  setAskBeforeDeleting(enabled: boolean): void {
+    try {
+      localStorage.setItem(SleepService.deleteConfirmationKey, String(enabled));
+    } catch {
+      throw new Error('Could not save the delete confirmation setting. Please try again.');
+    }
+    this.confirmDeletions = enabled;
+  }
 
-	public logSleepinessData(sleepData:StanfordSleepinessData) {
-		SleepService.AllSleepData.push(sleepData);
-		SleepService.AllSleepinessData.push(sleepData);
-	}
+  get overnight(): OvernightSleepData[] {
+    return this.records.filter((record): record is OvernightSleepData => record instanceof OvernightSleepData)
+      .sort((a, b) => b.sleepEnd.getTime() - a.sleepEnd.getTime());
+  }
+
+  get sleepiness(): StanfordSleepinessData[] {
+    return this.records.filter((record): record is StanfordSleepinessData => record instanceof StanfordSleepinessData);
+  }
+
+  reload(): void {
+    try {
+      const raw = localStorage.getItem(SleepService.storageKey);
+      const stored: unknown = raw === null ? [] : JSON.parse(raw);
+      if (!Array.isArray(stored)) throw new Error('Invalid data');
+      const ids = new Set<string>();
+      const records = stored.map((item: StoredRecord) => {
+        if (!item || typeof item.id !== 'string' || ids.has(item.id) ||
+            !Number.isFinite(new Date(item.loggedAt).getTime())) throw new Error('Invalid record');
+        ids.add(item.id);
+        let record: SleepRecord;
+        if (item.kind === 'sleep') {
+          const start = new Date(item.start ?? '');
+          const end = new Date(item.end ?? '');
+          if (overnightError(start, end)) throw new Error('Invalid sleep');
+          record = new OvernightSleepData(start, end);
+        } else if (item.kind === 'sleepiness') {
+          if (sleepinessError(item.rating ?? 0, new Date(item.loggedAt))) throw new Error('Invalid check-in');
+          record = new StanfordSleepinessData(item.rating!, new Date(item.loggedAt));
+        } else throw new Error('Invalid type');
+        record.id = item.id;
+        record.loggedAt = new Date(item.loggedAt);
+        return record;
+      });
+      this.records = records;
+      this.storageError = '';
+    } catch {
+      this.storageError = 'Your saved data could not be read. It has been preserved. Enable browser storage, then retry.';
+    }
+  }
+
+  save(record: SleepRecord): void {
+    const error = record instanceof OvernightSleepData
+      ? overnightError(record.sleepStart, record.sleepEnd)
+      : sleepinessError(record.loggedValue, record.loggedAt);
+    if (error) throw new Error(error);
+    this.persist([...this.records.filter(item => item.id !== record.id), record]);
+  }
+
+  logOvernightData(record: OvernightSleepData): void { this.save(record); }
+  logSleepinessData(record: StanfordSleepinessData): void { this.save(record); }
+
+  delete(id: string): void { this.persist(this.records.filter(record => record.id !== id)); }
+
+  private persist(records: SleepRecord[]): void {
+    if (this.storageError) throw new Error(this.storageError);
+    const stored: StoredRecord[] = records.map(record => ({
+      id: record.id,
+      loggedAt: record.loggedAt.toISOString(),
+      ...(record instanceof OvernightSleepData
+        ? { kind: 'sleep' as const, start: record.sleepStart.toISOString(), end: record.sleepEnd.toISOString() }
+        : { kind: 'sleepiness' as const, rating: record.loggedValue })
+    }));
+    try {
+      localStorage.setItem(SleepService.storageKey, JSON.stringify(stored));
+    } catch {
+      throw new Error('Could not save. Browser storage may be full or disabled. Your entry is still here; please try again.');
+    }
+    this.records = records;
+  }
 }

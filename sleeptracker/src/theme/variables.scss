@@ -1,2 +1,76 @@
 // For information on how to create your own theme, please see:
 // http://ionicframework.com/docs/theming/
+:root {
+  color-scheme: dark;
+  --app-bg: #111a2b;
+  --app-panel: #233550;
+  --app-panel-soft: #1a2b44;
+  --app-royal: #2044d9;
+  --app-bright: #008cff;
+  --app-cyan: #09c5ee;
+  --app-header: #142239;
+  --app-line: #39516f;
+  --app-text: #f0f6ff;
+  --app-muted: #bbcee4;
+  --ion-font-family: system-ui, 'Segoe UI', Arial, sans-serif;
+  --ion-background-color: var(--app-bg);
+  --ion-background-color-rgb: 17, 26, 43;
+  --ion-text-color: var(--app-text);
+  --ion-text-color-rgb: 240, 246, 255;
+  --ion-color-primary: var(--app-royal);
+  --ion-color-primary-rgb: 32, 68, 217;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #1c3cbf;
+  --ion-color-primary-tint: #3657dd;
+  --ion-color-secondary: var(--app-cyan);
+  --ion-color-secondary-rgb: 9, 197, 238;
+  --ion-color-secondary-contrast: #111a2b;
+  --ion-color-secondary-contrast-rgb: 17, 26, 43;
+  --ion-color-secondary-shade: #08add1;
+  --ion-color-secondary-tint: #22cbf0;
+  --ion-item-background: var(--app-panel);
+  --ion-toolbar-background: var(--app-header);
+  --ion-border-color: var(--app-line);
+}
+
+ion-datetime {
+  --background: var(--app-panel);
+  --background-rgb: 35, 53, 80;
+  --title-color: var(--app-text);
+  color: var(--app-text);
+}
+
+ion-datetime::part(wheel-item active) {
+  color: var(--app-cyan);
+}
+
+ion-toast {
+  --background: var(--app-panel);
+  --color: var(--app-text);
+  --button-color: var(--app-cyan);
+}
+
+ion-alert {
+  --background: var(--app-panel);
+}
+
+ion-alert.delete-confirmation {
+  --background: var(--app-panel);
+
+  .alert-checkbox-label {
+    color: var(--app-text);
+  }
+
+  .alert-message {
+    color: var(--app-muted);
+  }
+
+  .alert-button {
+    color: var(--app-cyan);
+  }
+
+  .alert-checkbox-icon {
+    border-color: var(--app-muted);
+  }
+}
